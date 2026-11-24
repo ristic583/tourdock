@@ -58,14 +58,14 @@ internal sealed partial class DemoDataSeeder(IServiceScopeFactory scopes, IConfi
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        await _stopping.CancelAsync();
         try
         {
+            await _stopping.CancelAsync();
             await PhotoSeeding.WaitAsync(cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
         {
-            // Shutting down; unfinished photos are uploaded on the next start.
+            // Shutting down (unfinished photos follow on the next start), or the host already disposed this service.
         }
     }
 
