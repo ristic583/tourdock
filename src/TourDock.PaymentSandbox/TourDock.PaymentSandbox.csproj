@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- A stand-in payment provider for local development and demos. Independent of the TourDock code on purpose. -->
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TourDock.PaymentSandbox.Tests" />
+  </ItemGroup>
+
+</Project>

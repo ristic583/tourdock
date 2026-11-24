@@ -1,0 +1,45 @@
+name: Security scan (nightly)
+
+# Semgrep SAST and the NuGet vulnerability audit, moved out of ci.yml: they run nightly and on demand instead of
+# gating every merge. The secret scan (gitleaks) stays in ci.yml because a leaked secret must block the merge.
+# GitHub emails you when a scheduled run fails.
+#
+# GitHub-hosted runners. No pull_request trigger.
+on:
+  schedule:
+    - cron: "30 3 * * *" # 03:30 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sast:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Read-only mount: Semgrep writes nothing into the workspace.
+      - run: |
+          docker run --rm -v "$PWD":/src:ro -w /src semgrep/semgrep:1.184.0 \
+            semgrep scan --config p/csharp --config p/dockerfile --error --metrics off
+
+  vulnerable-dependencies:
+    name: Vulnerable NuGet packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - run: dotnet restore TourDock.slnx
+      - name: Fail on known vulnerabilities (incl. transitive)
+        run: |
+          dotnet list TourDock.slnx package --vulnerable --include-transitive | tee vulnerable.txt
+          if grep -q "has the following vulnerable packages" vulnerable.txt; then exit 1; fi

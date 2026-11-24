@@ -1,0 +1,29 @@
+{
+  "name": "TourDock",
+  "dockerComposeFile": ["../compose.yaml", "compose.devcontainer.yaml"],
+  "service": "dev",
+  "runServices": ["dev", "db", "payments", "storage"],
+  "workspaceFolder": "/workspaces/tourdock",
+  "shutdownAction": "stopCompose",
+  "remoteUser": "vscode",
+
+  "features": {
+    // Lets Testcontainers and the gitleaks hook use the host's Docker engine
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+
+  "forwardPorts": [8080],
+
+  // Named volumes are created root-owned; hand them to the dev user, restore, enable git hooks
+  "postCreateCommand": "sudo chown -R vscode:vscode artifacts /home/vscode/.nuget && dotnet restore TourDock.slnx && dotnet tool restore && git config core.hooksPath .githooks && dotnet ef database update --project src/TourDock.Infrastructure",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-dotnettools.csdevkit",
+        "editorconfig.editorconfig",
+        "ms-azuretools.vscode-containers"
+      ]
+    }
+  }
+}

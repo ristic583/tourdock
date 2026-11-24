@@ -1,0 +1,12 @@
+# CI builds the same service definitions used by local smoke tests.
+services:
+  api:
+    image: ${IMAGE_PREFIX:?required}/api:${IMAGE_TAG:?required}
+  web:
+    image: ${IMAGE_PREFIX:?required}/web:${IMAGE_TAG:?required}
+  migrate:
+    image: ${IMAGE_PREFIX:?required}/migrate:${IMAGE_TAG:?required}
+  payments:
+    image: ${IMAGE_PREFIX:?required}/payments:${IMAGE_TAG:?required}
+  db:
+    image: ${IMAGE_PREFIX:?required}/db:${IMAGE_TAG:?required}

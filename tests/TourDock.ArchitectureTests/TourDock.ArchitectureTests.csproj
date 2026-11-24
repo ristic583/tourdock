@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TourDock.Domain\TourDock.Domain.csproj" />
+    <ProjectReference Include="..\..\src\TourDock.Application\TourDock.Application.csproj" />
+    <ProjectReference Include="..\..\src\TourDock.Infrastructure\TourDock.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\TourDock.Api\TourDock.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="NetArchTest.Rules" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="size-baseline.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

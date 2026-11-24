@@ -1,0 +1,103 @@
+name: CI
+
+# Build, unit, architecture and integration tests, web checks and the deployment config checks, on every push to
+# main and every pull request. Semgrep and the NuGet vulnerability audit run nightly (security-scan.yml). The Docker
+# smoke test + Playwright e2e run locally during development (web/e2e/README.md), not in CI.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  build-test:
+    name: Build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # gitleaks scans the full history, not just the last commit
+      # Stays on every PR and push (12 s): a leaked secret has to block the merge, not show up the next night.
+      - name: Secret scan (gitleaks)
+        run: |
+          docker run --rm -v "$PWD":/repo -w /repo \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo \
+            ghcr.io/gitleaks/gitleaks:v8.30.1 git --redact --no-banner /repo
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - run: dotnet format TourDock.slnx --verify-no-changes --verbosity minimal
+      - run: dotnet restore TourDock.slnx
+      - run: dotnet build TourDock.slnx --configuration Release --no-restore
+      - name: Unit & architecture tests
+        run: |
+          for p in Domain.UnitTests Application.UnitTests ArchitectureTests; do
+            dotnet test --project tests/TourDock.$p --configuration Release --no-build
+          done
+      - name: Integration tests (Testcontainers)
+        run: dotnet test --project tests/TourDock.Api.IntegrationTests --configuration Release --no-build
+      # Cheap config checks that used to sit in the smoke-test job: they guard the deploy, so they stay here.
+      - name: Validate deployment configuration
+        env:
+          IMAGE_PREFIX: ghcr.io/ristic583/tourdock
+          IMAGE_TAG: ${{ github.sha }}
+          LAN_HOST: 192.0.2.10
+          JWT_SIGNING_KEY: validation-only-not-a-secret
+          POSTGRES_PASSWORD: validation-only-not-a-secret
+          SMTP_HOST: 192.0.2.25
+          EMAIL_FROM: noreply@tourdock.example.com
+          TRUSTED_PROXIES: 192.0.2.1/32
+          PAYMENTS_API_KEY: validation-only-not-a-secret
+          PAYMENTS_WEBHOOK_SECRET: validation-only-not-a-secret
+          STORAGE_ACCESS_KEY: validation-only
+          STORAGE_SECRET_KEY: validation-only-not-a-secret
+        run: |
+          bash -n deploy/deploy.sh
+          # Every file compose.yaml mounts from deploy/ must be copied into the release by deploy.sh.
+          grep -q 'cp deploy/Caddyfile' deploy/deploy.sh
+          docker compose -f compose.yaml -f deploy/compose.build.yaml config --quiet
+          docker compose -f compose.yaml -f deploy/compose.lan.yaml config --quiet
+          docker compose -f compose.yaml -f deploy/compose.lan.yaml config | grep -q "Payments__AllowedReturnOrigins__0: http://192.0.2.10:3000"
+          docker compose -f compose.yaml -f deploy/compose.lan.yaml config | grep -q 'Email__SkipReservedDomains: "true"'
+          docker compose -f compose.yaml -f deploy/compose.lan.yaml config | grep -q "OAuth__Issuer: http://192.0.2.10:3000"
+          # A bare `! cmd` never trips `bash -e`, so this check used to pass no matter what.
+          if docker compose -f compose.yaml -f deploy/compose.lan.yaml config --services | grep -qx mailpit; then
+            echo "::error::mailpit must not be part of the LAN deployment"; exit 1
+          fi
+          PUBLIC_BASE_URL=https://tourdock.example.com AUTH_COOKIE_SECURE=true \
+            docker compose -f compose.yaml -f deploy/compose.lan.yaml config --quiet
+          PUBLIC_BASE_URL=https://tourdock.example.com \
+            docker compose -f compose.yaml -f deploy/compose.lan.yaml config | grep -q "Payments__AllowedReturnOrigins__0: https://tourdock.example.com"
+
+  web:
+    name: Web (lint, typecheck, test, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+

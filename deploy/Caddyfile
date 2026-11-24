@@ -1,0 +1,34 @@
+# Edge in front of the web app (ADR 0024).
+# The web app passes the visitor's IP to the API, whose rate limits are per IP. A browser can send any
+# X-Forwarded-For header, so the edge decides the IP itself:
+# - from a trusted proxy (TRUSTED_PROXIES, e.g. a reverse proxy in front of it), the right-most untrusted address in
+#   X-Forwarded-For;
+# - from anyone else, the address of the connection. Their own X-Forwarded-For header is dropped.
+# The web app receives exactly one address.
+{
+	admin off
+	auto_https off
+	servers {
+		trusted_proxies static {$TRUSTED_PROXIES:127.0.0.1/32}
+		trusted_proxies_strict
+		client_ip_headers X-Forwarded-For
+	}
+}
+
+:3000 {
+	# MCP clients (Claude, ChatGPT, IDE agents) talk to the API's MCP server and its OAuth authorization server directly
+	# (ADR 0027, 0028); everything else is the web app. Both get the same single client address.
+	@api path /mcp /mcp/* /connect/* /.well-known/oauth-authorization-server* /.well-known/openid-configuration* /.well-known/oauth-protected-resource* /.well-known/jwks
+	handle @api {
+		reverse_proxy api:8080 {
+			header_up X-Forwarded-For {client_ip}
+			header_up -X-Real-IP
+		}
+	}
+	handle {
+		reverse_proxy web:3000 {
+			header_up X-Forwarded-For {client_ip}
+			header_up -X-Real-IP
+		}
+	}
+}

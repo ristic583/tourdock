@@ -1,0 +1,208 @@
+# Production-like local environment:  docker compose up --build
+# Values come from .env (copy .env.example). The defaults below are for local use only.
+name: tourdock
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: src/TourDock.Api/Dockerfile
+      target: runtime
+    image: tourdock-api:local
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ConnectionStrings__Database: Host=db;Port=5432;Database=${POSTGRES_DB:-tourdock};Username=${POSTGRES_USER:-tourdock};Password=${POSTGRES_PASSWORD:-local-dev-only};GSS Encryption Mode=Disable
+      # Local-only default; set JWT_SIGNING_KEY in .env (at least 32 characters) for anything else.
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:-local-dev-only-jwt-signing-key-change-me}
+      # An admin account is created on startup only when both are set in .env.
+      Admin__Email: ${ADMIN_EMAIL:-}
+      Admin__Password: ${ADMIN_PASSWORD:-}
+      # Fictional agencies and tours so search works right away (only seeds an empty database).
+      Seed__DemoData: ${SEED_DEMO_DATA:-true}
+      Payments__BaseUrl: http://payments:8080
+      Payments__ApiKey: ${PAYMENTS_API_KEY:-local-dev-only-sandbox-api-key}
+      Payments__WebhookSecret: ${PAYMENTS_WEBHOOK_SECRET:-local-dev-only-webhook-secret-change-me}
+      # Where the payment page may send travelers back to (the web app's public origin). Anything else is rejected.
+      Payments__AllowedReturnOrigins__0: ${WEB_PUBLIC_ORIGIN:-http://localhost:${WEB_PORT:-3000}}
+      Storage__ServiceUrl: http://storage:9000
+      Storage__PublicBaseUrl: http://localhost:${STORAGE_PORT:-9000}/tour-photos
+      Storage__AccessKey: ${STORAGE_ACCESS_KEY:-tourdock-local}
+      Storage__SecretKey: ${STORAGE_SECRET_KEY:-local-dev-only-storage-secret}
+      # Locally every email goes to Mailpit (http://localhost:8025); nothing leaves the machine.
+      Email__Host: mailpit
+      Email__Port: 1025
+      Email__FromAddress: ${EMAIL_FROM:-noreply@tourdock.test}
+      Email__WebBaseUrl: ${WEB_PUBLIC_ORIGIN:-http://localhost:${WEB_PORT:-3000}}
+      # Only the web container may tell the API the visitor's IP (X-Forwarded-For); see the fixed address on "web".
+      ForwardedHeaders__KnownProxies__0: ${WEB_CONTAINER_IP:-172.30.240.10}
+      # The edge forwards MCP clients (/mcp) straight to the API, so it is trusted too (fixed address on "edge").
+      ForwardedHeaders__KnownProxies__1: ${EDGE_CONTAINER_IP:-172.30.240.11}
+      # Traces, metrics and logs go out only when this is set, e.g. http://aspire-dashboard:18889 (profile "observability").
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # Semantic search (free-text q) with Voyage AI. Empty = off; search keeps its normal order.
+      Voyage__ApiKey: ${VOYAGE_API_KEY:-}
+      Voyage__BaseUrl: ${VOYAGE_BASE_URL:-https://api.voyageai.com/v1/}
+      # Voyage has no spending cap: the API stops calling it after this many tokens (counted in the database).
+      Voyage__TokenBudget: ${VOYAGE_TOKEN_BUDGET:-150000000}
+      # New search vectors per visitor (IP); over it, search keeps its normal order.
+      RateLimiting__SemanticSearchPerMinute: ${SEMANTIC_SEARCH_PER_MINUTE:-20}
+      RateLimiting__SemanticSearchPerDay: ${SEMANTIC_SEARCH_PER_DAY:-200}
+      # The travel assistant (Claude). Empty = off; the web hides the chat.
+      Assistant__ApiKey: ${ANTHROPIC_API_KEY:-}
+      Assistant__Model: ${ASSISTANT_MODEL:-claude-haiku-5-5}
+      Assistant__MaxMessagesPerDay: ${ASSISTANT_MESSAGES_PER_DAY:-300}
+      Assistant__ExposeUsage: ${ASSISTANT_EXPOSE_USAGE:-false}
+      RateLimiting__AssistantPerMinute: ${ASSISTANT_PER_MINUTE:-6}
+      RateLimiting__AssistantPerDay: ${ASSISTANT_PER_DAY:-30}
+      # "Continue with Google" (ADR 0029): a Google OAuth client (web application). Empty = not offered.
+      Google__ClientId: ${GOOGLE_CLIENT_ID:-}
+      Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
+      # OAuth for MCP clients (ADR 0028): the public origin is also the token issuer. Without keys they are new on every
+      # start, so connected apps sign in again after a restart.
+      OAuth__Issuer: ${WEB_PUBLIC_ORIGIN:-http://localhost:${WEB_PORT:-3000}}
+      OAuth__SigningKeyPem: ${OAUTH_SIGNING_KEY_PEM:-}
+      OAuth__EncryptionKey: ${OAUTH_ENCRYPTION_KEY:-}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      storage:
+        condition: service_started
+    restart: unless-stopped
+
+  # The only way in to the web app: http://localhost:3000. It decides the visitor's IP from the connection and accepts an
+  # X-Forwarded-For header only from TRUSTED_PROXIES (e.g. a reverse proxy in front of it), so nobody can fake it.
+  edge:
+    image: caddy:2.10.0-alpine
+    environment:
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1/32}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      default:
+        ipv4_address: ${EDGE_CONTAINER_IP:-172.30.240.11}
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Next.js frontend + BFF (keeps the API tokens in httpOnly cookies). Not published: reached through "edge".
+  web:
+    build:
+      context: web
+    image: tourdock-web:local
+    environment:
+      API_BASE_URL: http://api:8080
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      default:
+        ipv4_address: ${WEB_CONTAINER_IP:-172.30.240.10}
+
+  # Applies pending database migrations once, then exits. The API starts only after it succeeds.
+  migrate:
+    build:
+      context: .
+      dockerfile: src/TourDock.Api/Dockerfile
+      target: migrations
+    image: tourdock-migrate:local
+    environment:
+      ConnectionStrings__Database: Host=db;Port=5432;Database=${POSTGRES_DB:-tourdock};Username=${POSTGRES_USER:-tourdock};Password=${POSTGRES_PASSWORD:-local-dev-only};GSS Encryption Mode=Disable
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  # Stand-in payment provider: API + hosted checkout page (http://localhost:8090/checkout/...) + signed webhooks.
+  payments:
+    build:
+      context: .
+      dockerfile: src/TourDock.PaymentSandbox/Dockerfile
+    image: tourdock-payment-sandbox:local
+    environment:
+      Sandbox__ApiKey: ${PAYMENTS_API_KEY:-local-dev-only-sandbox-api-key}
+      Sandbox__WebhookSecret: ${PAYMENTS_WEBHOOK_SECRET:-local-dev-only-webhook-secret-change-me}
+      Sandbox__WebhookUrl: http://api:8080/api/v1/webhooks/payments
+      Sandbox__PublicBaseUrl: http://localhost:${PAYMENTS_PORT:-8090}
+    ports:
+      - "${PAYMENTS_PORT:-8090}:8080"
+    restart: unless-stopped
+
+  # S3-compatible object storage for tour photos (RustFS; MinIO's community images are no longer published).
+  # Photos are publicly readable per object at http://localhost:9000/tour-photos/...; listing the bucket is not allowed.
+  # Optional local view of traces, metrics and structured logs: http://localhost:18888
+  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:18889 docker compose --profile observability up
+  aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:13.6.5
+    profiles: ["observability"]
+    environment:
+      # Local only: the dashboard has no login. Never expose this port beyond your machine.
+      DASHBOARD__FRONTEND__AUTHMODE: Unsecured
+      DASHBOARD__OTLP__AUTHMODE: Unsecured
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-18888}:18888"
+
+  # Catches every email the API sends and shows it in a web inbox: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.33.1
+    ports:
+      - "${MAIL_UI_PORT:-8025}:8025"
+    restart: unless-stopped
+
+  storage:
+    image: rustfs/rustfs:1.0.4
+    environment:
+      RUSTFS_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-tourdock-local}
+      RUSTFS_SECRET_KEY: ${STORAGE_SECRET_KEY:-local-dev-only-storage-secret}
+    volumes:
+      - storage-data:/data
+    ports:
+      - "${STORAGE_PORT:-9000}:9000"
+    restart: unless-stopped
+
+  db:
+    # PostgreSQL 18 (Alpine) with pgvector for semantic search; see deploy/db/Dockerfile.
+    build:
+      context: deploy/db
+    image: tourdock-db:local
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tourdock}
+      POSTGRES_USER: ${POSTGRES_USER:-tourdock}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-dev-only}
+    volumes:
+      # Postgres 18+ images keep data under /var/lib/postgresql/<major>/docker
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      # Every 2s while starting (api waits on service_healthy), then once a
+      # minute: frequent checks keep dockerd/containerd busy on an idle host.
+      interval: 60s
+      start_period: 120s
+      start_interval: 2s
+      timeout: 3s
+      retries: 3
+    # Not published to the host by default. To use a DB GUI, create a (gitignored)
+    # compose.override.yaml with:  services: { db: { ports: ["5432:5432"] } }
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  storage-data:
+
+networks:
+  default:
+    ipam:
+      config:
+        # Fixed so the web container has a known address the API can trust for X-Forwarded-For.
+        - subnet: ${COMPOSE_SUBNET:-172.30.240.0/24}

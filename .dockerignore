@@ -1,0 +1,16 @@
+# Keep the build context small and free of secrets/private files
+.git
+.github
+.devcontainer
+.githooks
+.vscode
+.idea
+**/artifacts
+**/bin
+**/obj
+**/*.user
+.env
+.env.*
+docs
+tests
+*.md

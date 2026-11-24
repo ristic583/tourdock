@@ -1,0 +1,45 @@
+# Development container, layered on top of ../compose.yaml (reuses its `db` service).
+# Source is bind-mounted from the host; build output and NuGet cache live in named volumes
+# so builds don't go through the slow host file share.
+services:
+  dev:
+    image: mcr.microsoft.com/devcontainers/dotnet:2-10.0
+    command: sleep infinity
+    volumes:
+      # Relative paths resolve against the first compose file (../compose.yaml), i.e. the repo root
+      - .:/workspaces/tourdock:cached
+      - dev-artifacts:/workspaces/tourdock/artifacts
+      - dev-nuget:/home/vscode/.nuget/packages
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Database: Host=db;Port=5432;Database=${POSTGRES_DB:-tourdock};Username=${POSTGRES_USER:-tourdock};Password=${POSTGRES_PASSWORD:-local-dev-only}
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:-local-dev-only-jwt-signing-key-change-me}
+      Admin__Email: ${ADMIN_EMAIL:-}
+      Admin__Password: ${ADMIN_PASSWORD:-}
+      Payments__BaseUrl: http://payments:8080
+      Payments__ApiKey: ${PAYMENTS_API_KEY:-local-dev-only-sandbox-api-key}
+      Payments__WebhookSecret: ${PAYMENTS_WEBHOOK_SECRET:-local-dev-only-webhook-secret-change-me}
+      Storage__ServiceUrl: http://storage:9000
+      Storage__PublicBaseUrl: http://localhost:${STORAGE_PORT:-9000}/tour-photos
+      Storage__AccessKey: ${STORAGE_ACCESS_KEY:-tourdock-local}
+      Storage__SecretKey: ${STORAGE_SECRET_KEY:-local-dev-only-storage-secret}
+      Email__Host: mailpit
+      Email__Port: 1025
+      Email__FromAddress: noreply@tourdock.test
+      Email__WebBaseUrl: http://localhost:${WEB_PORT:-3000}
+      # Testcontainers runs sibling containers on the host Docker; reach their mapped ports via the host.
+      TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # In the dev container the API runs inside "dev" (dotnet watch), so webhooks go there.
+  payments:
+    environment:
+      Sandbox__WebhookUrl: http://dev:8080/api/v1/webhooks/payments
+
+volumes:
+  dev-artifacts:
+  dev-nuget:

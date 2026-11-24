@@ -1,0 +1,61 @@
+# Runtime override: images only, with persistent secrets in /opt/tourdock/.env.
+# Browser-facing links: set PUBLIC_BASE_URL (e.g. https://tourdock.example.com) when a reverse proxy
+# serves web, /checkout/... and /tour-photos/... under one origin; otherwise they use LAN_HOST ports.
+# With an https PUBLIC_BASE_URL the auth cookies are always Secure (AUTH_COOKIE_SECURE can't turn that off).
+services:
+  api:
+    build: !reset null
+    image: ${IMAGE_PREFIX:?required}/api:${IMAGE_TAG:?required}
+    environment:
+      # Every secret is required here: compose.yaml's local defaults are public. The API also refuses to start on them.
+      Deployment__RejectLocalSecrets: "true"
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?required}
+      Payments__ApiKey: ${PAYMENTS_API_KEY:?required}
+      Payments__WebhookSecret: ${PAYMENTS_WEBHOOK_SECRET:?required}
+      Storage__AccessKey: ${STORAGE_ACCESS_KEY:?required}
+      Storage__SecretKey: ${STORAGE_SECRET_KEY:?required}
+      Storage__PublicBaseUrl: ${PUBLIC_BASE_URL:-http://${LAN_HOST:?required}:9000}/tour-photos
+      # Where the payment page may send travelers back to (exact origin match): the public origin, and the LAN web port.
+      Payments__AllowedReturnOrigins__0: ${PUBLIC_BASE_URL:-http://${LAN_HOST:?required}:${WEB_PORT:-3000}}
+      Payments__AllowedReturnOrigins__1: http://${LAN_HOST:?required}:${WEB_PORT:-3000}
+      # Real email through an SMTP relay. Reserved demo domains (example.com, ...) are never sent to.
+      Email__Host: ${SMTP_HOST:?required}
+      Email__Port: ${SMTP_PORT:-25}
+      Email__FromAddress: ${EMAIL_FROM:?required}
+      Email__SkipReservedDomains: "true"
+      Email__WebBaseUrl: ${PUBLIC_BASE_URL:-http://${LAN_HOST:?required}:${WEB_PORT:-3000}}
+      # OAuth for MCP clients (ADR 0028): the public origin is the issuer and the base of /mcp/account.
+      OAuth__Issuer: ${PUBLIC_BASE_URL:-http://${LAN_HOST:?required}:${WEB_PORT:-3000}}
+    ports: !override
+      - "127.0.0.1:8080:8080"
+  edge:
+    environment:
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:?required}
+  web:
+    build: !reset null
+    image: ${IMAGE_PREFIX:?required}/web:${IMAGE_TAG:?required}
+    environment:
+      # Plain-HTTP LAN access needs non-Secure cookies; with an https PUBLIC_BASE_URL they are Secure regardless.
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      PUBLIC_ORIGIN: ${PUBLIC_BASE_URL:-}
+  migrate:
+    build: !reset null
+    image: ${IMAGE_PREFIX:?required}/migrate:${IMAGE_TAG:?required}
+  payments:
+    build: !reset null
+    image: ${IMAGE_PREFIX:?required}/payments:${IMAGE_TAG:?required}
+    environment:
+      Sandbox__ApiKey: ${PAYMENTS_API_KEY:?required}
+      Sandbox__WebhookSecret: ${PAYMENTS_WEBHOOK_SECRET:?required}
+      Sandbox__PublicBaseUrl: ${PUBLIC_BASE_URL:-http://${LAN_HOST:?required}:8090}
+  # The LAN deployment sends through the relay; the local mail catcher isn't started.
+  mailpit:
+    profiles: ["local-mail"]
+  storage:
+    environment:
+      RUSTFS_ACCESS_KEY: ${STORAGE_ACCESS_KEY:?required}
+      RUSTFS_SECRET_KEY: ${STORAGE_SECRET_KEY:?required}
+  db:
+    image: ${IMAGE_PREFIX:?required}/db:${IMAGE_TAG:?required}
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}

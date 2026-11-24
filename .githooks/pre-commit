@@ -1,0 +1,34 @@
+#!/bin/sh
+# Blocks commits that contain secrets. Runs gitleaks in Docker (no local install needed).
+# Enable once per clone:  git config core.hooksPath .githooks
+set -e
+
+GITLEAKS_IMAGE="ghcr.io/gitleaks/gitleaks:v8.30.1"
+
+repo_root="$(git rev-parse --show-toplevel)"
+git_common="$(cd "$(git rev-parse --git-common-dir)" && pwd -P)"
+
+if ! docker info >/dev/null 2>&1; then
+  echo "pre-commit: Docker is not running — cannot scan for secrets. Start Docker or commit with --no-verify (not recommended)." >&2
+  exit 1
+fi
+
+if [ -n "$LOCAL_WORKSPACE_FOLDER" ]; then
+  # Inside the dev container Docker runs on the host, so mount the host path of the workspace.
+  docker run --rm \
+    -v "$LOCAL_WORKSPACE_FOLDER":/repo \
+    -w /repo \
+    -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo \
+    "$GITLEAKS_IMAGE" git --pre-commit --staged --redact --no-banner /repo
+  exit $?
+fi
+
+# Mount the work tree and the repository's .git at their real paths. In a linked worktree, .git is a file that points
+# into the main repository's .git directory by absolute path; without that directory in the container gitleaks would
+# find no repository and scan nothing.
+docker run --rm \
+  -v "$repo_root":"$repo_root" \
+  -v "$git_common":"$git_common" \
+  -w "$repo_root" \
+  -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
+  "$GITLEAKS_IMAGE" git --pre-commit --staged --redact --no-banner "$repo_root"

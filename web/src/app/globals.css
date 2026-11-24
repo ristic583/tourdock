@@ -1,0 +1,248 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/*
+ * TourDock design tokens.
+ * Raw values live in CSS custom properties (light by default, dark override below).
+ * The @theme block maps them to Tailwind utilities (bg-surface, text-muted-foreground, rounded-card, ...)
+ * and to the names shadcn/ui components expect (card, popover, border, ring, ...).
+ */
+
+/* Dark mode follows the data-theme attribute set before first paint (see ThemeScript). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  --bg: #f6f7f5;
+  --surface: #ffffff;
+  --surface-2: #eef2f0;
+  --line: #dce3e0;
+  --ink: #0f1a20;
+  --muted: #56636b;
+  --primary: #0a6e6a;
+  --primary-hover: #085a57;
+  --primary-ink: #ffffff;
+  --primary-soft: #e1f1ee;
+  /* Orange is reserved for urgency, warnings and cancellations. */
+  --urgent: #e8743b;
+  --urgent-soft: #fdebdd;
+  --urgent-ink: #9a3412;
+  --star: #d98a1c;
+  --shadow: 0 1px 2px rgb(15 26 32 / 0.06), 0 8px 24px rgb(15 26 32 / 0.06);
+
+  /* Booking status pills */
+  --status-pending-bg: #fef0c7;
+  --status-pending-ink: #7a4a06;
+  --status-confirmed-bg: var(--primary-soft);
+  --status-confirmed-ink: var(--primary);
+  --status-completed-bg: #e3e9f7;
+  --status-completed-ink: #2b4a8c;
+  --status-cancelled-bg: var(--urgent-soft);
+  --status-cancelled-ink: var(--urgent-ink);
+  --status-expired-bg: var(--surface-2);
+  --status-expired-ink: var(--muted);
+
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #0c1316;
+  --surface: #131d21;
+  --surface-2: #1b272c;
+  --line: #283639;
+  --ink: #e8eeec;
+  --muted: #9aa8ae;
+  --primary: #3fc1b5;
+  --primary-hover: #5fd3c8;
+  --primary-ink: #06211f;
+  --primary-soft: #123230;
+  --urgent: #f08a55;
+  --urgent-soft: #3a2416;
+  --urgent-ink: #f6b58a;
+  --star: #f0b04a;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.3);
+
+  --status-pending-bg: #3a2e12;
+  --status-pending-ink: #f3cd77;
+  --status-completed-bg: #1c2840;
+  --status-completed-ink: #a9bdf0;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-space-grotesk), var(--font-inter), ui-sans-serif, sans-serif;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-ink);
+  --color-primary-soft: var(--primary-soft);
+  --color-urgent: var(--urgent);
+  --color-urgent-soft: var(--urgent-soft);
+  --color-urgent-ink: var(--urgent-ink);
+  --color-star: var(--star);
+
+  /* Names used by shadcn/ui components */
+  --color-background: var(--bg);
+  --color-foreground: var(--ink);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--ink);
+  --color-secondary: var(--surface-2);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--surface-2);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--surface-2);
+  --color-accent-foreground: var(--ink);
+  --color-destructive: var(--urgent-ink);
+  --color-border: var(--line);
+  --color-input: var(--line);
+  --color-ring: var(--primary);
+
+  /* Radii: 10 chips, 12 controls, 18 cards, 22 hero */
+  --radius-chip: 10px;
+  --radius-control: 12px;
+  --radius-card: 18px;
+  --radius-hero: 22px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 18px;
+
+  --shadow-card: var(--shadow);
+  --container-page: 1280px;
+}
+
+@layer base {
+  * {
+    @apply border-line;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-bg text-ink font-sans;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  h1,
+  h2,
+  h3,
+  .font-display {
+    @apply font-display;
+    letter-spacing: -0.02em;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* 12px semibold uppercase label (form labels, section eyebrows) */
+  .label-caps {
+    @apply text-xs font-semibold tracking-[0.06em] uppercase text-muted-foreground;
+  }
+}
+
+/*
+ * Illustrated photo placeholders, used until the API serves real tour photos.
+ * Dimmed slightly in dark mode so they don't glare.
+ */
+@layer components {
+  [class*="photo-"] {
+    position: relative;
+    overflow: hidden;
+  }
+  [data-theme="dark"] [class*="photo-"] {
+    filter: brightness(0.88) saturate(0.95);
+  }
+  .photo-sea {
+    background:
+      radial-gradient(circle at 74% 34%, #fff1cc 0 8%, transparent 8.5%),
+      linear-gradient(180deg, #cfe7ea 0 56%, #6aafbb 56% 70%, #4e97a6 70% 100%);
+  }
+  .photo-sunset {
+    background:
+      radial-gradient(circle at 50% 58%, #ffe2b0 0 12%, transparent 12.5%),
+      linear-gradient(180deg, #f6c9a4 0 58%, #c97b5e 58% 72%, #9c5a4a 72% 100%);
+  }
+  .photo-desert {
+    background:
+      radial-gradient(circle at 24% 30%, #fff6dc 0 7%, transparent 7.5%),
+      linear-gradient(170deg, #f3e2c2 0 50%, #e2b97f 50% 68%, #c98f55 68% 100%);
+  }
+  .photo-island {
+    background:
+      radial-gradient(ellipse at 40% 62%, #7fae7a 0 14%, transparent 14.5%),
+      linear-gradient(180deg, #d7ecee 0 55%, #7cc0c4 55% 100%);
+  }
+  .photo-deep {
+    background:
+      radial-gradient(circle at 80% 26%, #f4f1e6 0 6%, transparent 6.5%),
+      linear-gradient(180deg, #b8d6e0 0 46%, #2f6f86 46% 64%, #1f5267 64% 100%);
+  }
+  .photo-hills {
+    background:
+      radial-gradient(circle at 70% 30%, #fff4d4 0 7%, transparent 7.5%),
+      linear-gradient(165deg, #dcebdd 0 48%, #9ec09a 48% 66%, #6e9a72 66% 100%);
+  }
+  .photo-city {
+    background:
+      linear-gradient(
+          90deg,
+          transparent 0 12%,
+          #c9b9a6 12% 20%,
+          transparent 20% 30%,
+          #b7a691 30% 42%,
+          transparent 42% 55%,
+          #cdbeab 55% 63%,
+          transparent 63% 100%
+        )
+        bottom/100% 46% no-repeat,
+      linear-gradient(180deg, #eadfd0 0 70%, #9fb7be 70% 100%);
+  }
+}
+
+/* Meeting-point pin on the agency map (Leaflet divIcon): a teal drop with a white dot. */
+.meeting-pin {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50% 50% 50% 0;
+  background: var(--primary);
+  border: 3px solid #fff;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.35);
+  transform: rotate(-45deg);
+}
+.meeting-pin::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+/* Top navigation progress bar: grows fast at first, then slows down while the page streams in. */
+@keyframes nav-progress-grow {
+  from { transform: scaleX(0.08); }
+  to { transform: scaleX(0.85); }
+}
+.nav-progress[data-phase="loading"] {
+  animation: nav-progress-grow 8s cubic-bezier(0.1, 0.7, 0.2, 1) forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-progress[data-phase="loading"] { animation: none; transform: scaleX(0.6); }
+}

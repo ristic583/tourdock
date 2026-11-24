@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Runs the assistant eval against a running TourDock (calls a real model, so it costs a little; never in CI). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="cases.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TourDock.Api/TourDock.Api.csproj" />
+    <Project Path="src/TourDock.Application/TourDock.Application.csproj" />
+    <Project Path="src/TourDock.Domain/TourDock.Domain.csproj" />
+    <Project Path="src/TourDock.Infrastructure/TourDock.Infrastructure.csproj" />
+    <Project Path="src/TourDock.PaymentSandbox/TourDock.PaymentSandbox.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TourDock.Api.IntegrationTests/TourDock.Api.IntegrationTests.csproj" />
+    <Project Path="tests/TourDock.Application.UnitTests/TourDock.Application.UnitTests.csproj" />
+    <Project Path="tests/TourDock.ArchitectureTests/TourDock.ArchitectureTests.csproj" />
+    <Project Path="tests/TourDock.Domain.UnitTests/TourDock.Domain.UnitTests.csproj" />
+    <Project Path="tests/TourDock.PaymentSandbox.Tests/TourDock.PaymentSandbox.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/TourDock.AssistantEval/TourDock.AssistantEval.csproj" />
+  </Folder>
+</Solution>
